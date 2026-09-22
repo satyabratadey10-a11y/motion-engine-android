@@ -6,6 +6,7 @@ plugins {
 android {
     namespace = "com.tracker.motionengine"
     compileSdk = 34
+    ndkVersion = "25.2.9519653"
 
     defaultConfig {
         minSdk = 24
