@@ -252,7 +252,6 @@ void MotionEngineCore::trackPointsSingleLevel(
             vy += etaY;
 
             if (etaX * etaX + etaY * etaY < 0.0004f) { // Convergence threshold 0.02 pixel
-                converged = true;
                 break;
             }
         }
