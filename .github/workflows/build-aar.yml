@@ -47,5 +47,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: motion-engine-release-aar
-          path: motion-engine/build/outputs/aar/motion-engine-release.aar
+          path: motion-engine/build/outputs/aar/*.aar
           if-no-files-found: error

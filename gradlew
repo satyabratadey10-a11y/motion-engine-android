@@ -150,9 +150,6 @@ done
 
 # If gradle-wrapper.jar is missing, download it automatically or run via gradle
 if [ ! -f "$CLASSPATH" ]; then
-    if command -v gradle >/dev/null 2>&1 ; then
-        exec gradle "$@"
-    fi
     mkdir -p "$APP_HOME/gradle/wrapper"
     JAR_URL="https://raw.githubusercontent.com/gradle/gradle/v8.4.0/gradle/wrapper/gradle-wrapper.jar"
     if command -v curl >/dev/null 2>&1 ; then
