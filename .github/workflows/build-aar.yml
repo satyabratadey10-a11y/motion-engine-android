@@ -1,0 +1,48 @@
+name: Build Universal AAR
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Native Motion Engine AAR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK 25.2.9519653 & CMake
+        run: |
+          echo "Accepting licenses and installing NDK 25.2.9519653 and CMake..."
+          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653" "cmake;3.22.1"
+          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/25.2.9519653" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=${ANDROID_SDK_ROOT}/ndk/25.2.9519653" >> $GITHUB_ENV
+
+      - name: Make Gradlew Executable
+        run: chmod +x gradlew
+
+      - name: Build AAR with Gradle
+        run: ./gradlew :motion-engine:assembleRelease --no-daemon --stacktrace
+
+      - name: Upload Release AAR Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: motion-engine-release-aar
+          path: motion-engine/build/outputs/aar/motion-engine-release.aar
+          if-no-files-found: error
