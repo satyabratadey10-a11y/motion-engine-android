@@ -217,7 +217,6 @@ void MotionEngineCore::trackPointsSingleLevel(
         float vx = guessJ[ptIdx].x - x0;
         float vy = guessJ[ptIdx].y - y0;
 
-        bool converged = false;
         for (int iter = 0; iter < maxIters; ++iter) {
             float bx = 0.0f;
             float by = 0.0f;
@@ -543,24 +542,13 @@ bool MotionEngineCore::estimateAffineSimilarity(
     // Normal Equations: (A^T * A) * p = A^T * Y
     // p = [a, b, dx, dy]^T
 
-    double sa = 0.0, sb = 0.0;
     double sx = 0.0, sy = 0.0, sx_p = 0.0, sy_p = 0.0;
-    double s_xx_yy = 0.0;
 
     for (size_t i = 0; i < n; ++i) {
-        double x = src[i].x;
-        double y = src[i].y;
-        double xp = dst[i].x;
-        double yp = dst[i].y;
-
-        sx += x;
-        sy += y;
-        sx_p += xp;
-        sy_p += yp;
-        s_xx_yy += (x * x + y * y);
-
-        sa += (x * xp + y * yp);
-        sb += (x * yp - y * xp);
+        sx += src[i].x;
+        sy += src[i].y;
+        sx_p += dst[i].x;
+        sy_p += dst[i].y;
     }
 
     double N = static_cast<double>(n);

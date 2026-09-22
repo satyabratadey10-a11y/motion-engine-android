@@ -91,6 +91,10 @@ struct GrayImage {
     inline const uint8_t* row(int y) const {
         return &data[y * width];
     }
+
+    inline uint8_t* row(int y) {
+        return &data[y * width];
+    }
 };
 
 /**
