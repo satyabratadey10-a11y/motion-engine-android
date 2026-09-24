@@ -413,25 +413,37 @@ bool MotionEngineCore::trackBoundingBox(
             float sumCross = 0.0f;
             int count = tw * th;
 
-            for (int ty = 0; ty < th; ++ty) {
-                const uint8_t* fRow = frame.row(y + ty) + x;
-                const uint8_t* tRow = mTemplatePatch.row(ty);
-                for (int tx = 0; tx < tw; ++tx) {
-                    float valI = static_cast<float>(fRow[tx]);
-                    float valT = static_cast<float>(tRow[tx]);
-                    sumI += valI;
-                    sumISq += valI * valI;
-                    sumCross += (valT - mTemplateMean) * valI;
+            float matchScore = -1.0f;
+            if (mTemplateStdDev < 5.0f) {
+                float sumDiff = 0.0f;
+                for (int ty = 0; ty < th; ++ty) {
+                    const uint8_t* fRow = frame.row(y + ty) + x;
+                    const uint8_t* tRow = mTemplatePatch.row(ty);
+                    for (int tx = 0; tx < tw; ++tx) {
+                        sumDiff += std::abs(static_cast<int>(fRow[tx]) - static_cast<int>(tRow[tx]));
+                    }
                 }
+                matchScore = 1.0f - (sumDiff / (count * 255.0f));
+            } else {
+                for (int ty = 0; ty < th; ++ty) {
+                    const uint8_t* fRow = frame.row(y + ty) + x;
+                    const uint8_t* tRow = mTemplatePatch.row(ty);
+                    for (int tx = 0; tx < tw; ++tx) {
+                        float valI = static_cast<float>(fRow[tx]);
+                        float valT = static_cast<float>(tRow[tx]);
+                        sumI += valI;
+                        sumISq += valI * valI;
+                        sumCross += (valT - mTemplateMean) * valI;
+                    }
+                }
+                float meanI = sumI / count;
+                float varI = (sumISq / count) - (meanI * meanI);
+                float stdDevI = std::sqrt(std::max(1.0f, varI));
+                matchScore = (sumCross / count) / (mTemplateStdDev * stdDevI);
             }
 
-            float meanI = sumI / count;
-            float varI = (sumISq / count) - (meanI * meanI);
-            float stdDevI = std::sqrt(std::max(1.0f, varI));
-
-            float zncc = (sumCross / count) / (mTemplateStdDev * stdDevI);
-            if (zncc > bestZNCC) {
-                bestZNCC = zncc;
+            if (matchScore > bestZNCC) {
+                bestZNCC = matchScore;
                 bestX = x;
                 bestY = y;
             }
@@ -451,25 +463,37 @@ bool MotionEngineCore::trackBoundingBox(
             float sumCross = 0.0f;
             int count = tw * th;
 
-            for (int ty = 0; ty < th; ++ty) {
-                const uint8_t* fRow = frame.row(y + ty) + x;
-                const uint8_t* tRow = mTemplatePatch.row(ty);
-                for (int tx = 0; tx < tw; ++tx) {
-                    float valI = static_cast<float>(fRow[tx]);
-                    float valT = static_cast<float>(tRow[tx]);
-                    sumI += valI;
-                    sumISq += valI * valI;
-                    sumCross += (valT - mTemplateMean) * valI;
+            float matchScore = -1.0f;
+            if (mTemplateStdDev < 5.0f) {
+                float sumDiff = 0.0f;
+                for (int ty = 0; ty < th; ++ty) {
+                    const uint8_t* fRow = frame.row(y + ty) + x;
+                    const uint8_t* tRow = mTemplatePatch.row(ty);
+                    for (int tx = 0; tx < tw; ++tx) {
+                        sumDiff += std::abs(static_cast<int>(fRow[tx]) - static_cast<int>(tRow[tx]));
+                    }
                 }
+                matchScore = 1.0f - (sumDiff / (count * 255.0f));
+            } else {
+                for (int ty = 0; ty < th; ++ty) {
+                    const uint8_t* fRow = frame.row(y + ty) + x;
+                    const uint8_t* tRow = mTemplatePatch.row(ty);
+                    for (int tx = 0; tx < tw; ++tx) {
+                        float valI = static_cast<float>(fRow[tx]);
+                        float valT = static_cast<float>(tRow[tx]);
+                        sumI += valI;
+                        sumISq += valI * valI;
+                        sumCross += (valT - mTemplateMean) * valI;
+                    }
+                }
+                float meanI = sumI / count;
+                float varI = (sumISq / count) - (meanI * meanI);
+                float stdDevI = std::sqrt(std::max(1.0f, varI));
+                matchScore = (sumCross / count) / (mTemplateStdDev * stdDevI);
             }
 
-            float meanI = sumI / count;
-            float varI = (sumISq / count) - (meanI * meanI);
-            float stdDevI = std::sqrt(std::max(1.0f, varI));
-
-            float zncc = (sumCross / count) / (mTemplateStdDev * stdDevI);
-            if (zncc > bestZNCC) {
-                bestZNCC = zncc;
+            if (matchScore > bestZNCC) {
+                bestZNCC = matchScore;
                 bestX = x;
                 bestY = y;
             }

@@ -10,13 +10,14 @@ add_compile_options(
     -Wall
     -Wextra
     -ffast-math
-    -fvisibility=hidden
+    -fvisibility=default
 )
 
 add_library(
     motionengine
     SHARED
     motion-engine.cpp
+    motion_engine_api.cpp
 )
 
 target_include_directories(
