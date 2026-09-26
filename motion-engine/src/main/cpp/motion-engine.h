@@ -193,6 +193,13 @@ private:
     float mTemplateMean;
     float mTemplateStdDev;
 
+    // Fast motion tracking & kinematics state
+    bool mHasPrevFrame;
+    GrayImage mPrevFrameGray;
+    float mVelocityX;
+    float mVelocityY;
+    int mLostFramesCount;
+
     // Video stabilization state
     bool mHasPrevStabFrame;
     GrayImage mPrevStabFrame;

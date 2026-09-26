@@ -63,6 +63,10 @@ MotionEngineCore::MotionEngineCore()
     : mHasTemplate(false),
       mTemplateMean(0.0f),
       mTemplateStdDev(1.0f),
+      mHasPrevFrame(false),
+      mVelocityX(0.0f),
+      mVelocityY(0.0f),
+      mLostFramesCount(0),
       mHasPrevStabFrame(false),
       mStabilizationWindowSize(20) {
     mCurrentCumulativeTrajectory = {0.0f, 0.0f, 0.0f};
@@ -349,6 +353,10 @@ void MotionEngineCore::trackPoints(
 
 void MotionEngineCore::initBoundingBox(const GrayImage& frame, const BoundingBox& box) {
     mCurrentBox = box;
+    mVelocityX = 0.0f;
+    mVelocityY = 0.0f;
+    mLostFramesCount = 0;
+
     int bx = std::max(0, static_cast<int>(box.x));
     int by = std::max(0, static_cast<int>(box.y));
     int bw = std::max(4, std::min(static_cast<int>(box.width), frame.width - bx));
@@ -375,6 +383,10 @@ void MotionEngineCore::initBoundingBox(const GrayImage& frame, const BoundingBox
     float variance = (sumSq / count) - (mTemplateMean * mTemplateMean);
     mTemplateStdDev = std::sqrt(std::max(1.0f, variance));
     mHasTemplate = true;
+
+    // Cache initial frame for pyramidal LK optical flow
+    mPrevFrameGray = frame;
+    mHasPrevFrame = true;
 }
 
 bool MotionEngineCore::trackBoundingBox(
@@ -388,152 +400,224 @@ bool MotionEngineCore::trackBoundingBox(
 
     int tw = mTemplatePatch.width;
     int th = mTemplatePatch.height;
-    int cx = static_cast<int>(mCurrentBox.x + mCurrentBox.width * 0.5f);
-    int cy = static_cast<int>(mCurrentBox.y + mCurrentBox.height * 0.5f);
 
-    int searchRadius = std::max(24, std::min(64, tw / 2));
-    int minX = std::max(0, cx - searchRadius - tw / 2);
-    int maxX = std::min(frame.width - tw, cx + searchRadius - tw / 2);
-    int minY = std::max(0, cy - searchRadius - th / 2);
-    int maxY = std::min(frame.height - th, cy + searchRadius - th / 2);
+    // 1. Pyramidal Lucas-Kanade Optical Flow Motion Estimation
+    float lkDx = 0.0f;
+    float lkDy = 0.0f;
+    bool lkSuccess = false;
 
-    if (minX >= maxX || minY >= maxY) {
-        return false;
-    }
+    if (mHasPrevFrame && mPrevFrameGray.width == frame.width && mPrevFrameGray.height == frame.height) {
+        std::vector<Point2f> ptsIn;
+        const int gridN = 4;
+        float stepX = mCurrentBox.width / (gridN + 1);
+        float stepY = mCurrentBox.height / (gridN + 1);
 
-    float bestZNCC = -1.0f;
-    int bestX = minX;
-    int bestY = minY;
-
-    // Coarse search (stride 2) for maximum speed
-    for (int y = minY; y <= maxY; y += 2) {
-        for (int x = minX; x <= maxX; x += 2) {
-            float sumI = 0.0f;
-            float sumISq = 0.0f;
-            float sumCross = 0.0f;
-            int count = tw * th;
-
-            float matchScore = -1.0f;
-            if (mTemplateStdDev < 5.0f) {
-                float sumDiff = 0.0f;
-                for (int ty = 0; ty < th; ++ty) {
-                    const uint8_t* fRow = frame.row(y + ty) + x;
-                    const uint8_t* tRow = mTemplatePatch.row(ty);
-                    for (int tx = 0; tx < tw; ++tx) {
-                        sumDiff += std::abs(static_cast<int>(fRow[tx]) - static_cast<int>(tRow[tx]));
-                    }
+        for (int gy = 1; gy <= gridN; ++gy) {
+            for (int gx = 1; gx <= gridN; ++gx) {
+                float px = mCurrentBox.x + gx * stepX;
+                float py = mCurrentBox.y + gy * stepY;
+                if (px >= 4.0f && px < frame.width - 4.0f &&
+                    py >= 4.0f && py < frame.height - 4.0f) {
+                    ptsIn.emplace_back(px, py, 1);
                 }
-                matchScore = 1.0f - (sumDiff / (count * 255.0f));
-            } else {
-                for (int ty = 0; ty < th; ++ty) {
-                    const uint8_t* fRow = frame.row(y + ty) + x;
-                    const uint8_t* tRow = mTemplatePatch.row(ty);
-                    for (int tx = 0; tx < tw; ++tx) {
-                        float valI = static_cast<float>(fRow[tx]);
-                        float valT = static_cast<float>(tRow[tx]);
-                        sumI += valI;
-                        sumISq += valI * valI;
-                        sumCross += (valT - mTemplateMean) * valI;
-                    }
+            }
+        }
+
+        if (!ptsIn.empty()) {
+            std::vector<Point2f> ptsOut;
+            trackPoints(mPrevFrameGray, frame, ptsIn, ptsOut, 15, 3, 10, 0.0005f);
+
+            std::vector<float> flowX;
+            std::vector<float> flowY;
+            for (size_t i = 0; i < ptsIn.size(); ++i) {
+                if (ptsOut[i].status) {
+                    flowX.push_back(ptsOut[i].x - ptsIn[i].x);
+                    flowY.push_back(ptsOut[i].y - ptsIn[i].y);
                 }
-                float meanI = sumI / count;
-                float varI = (sumISq / count) - (meanI * meanI);
-                float stdDevI = std::sqrt(std::max(1.0f, varI));
-                matchScore = (sumCross / count) / (mTemplateStdDev * stdDevI);
             }
 
-            if (matchScore > bestZNCC) {
-                bestZNCC = matchScore;
-                bestX = x;
-                bestY = y;
+            if (flowX.size() >= 3) {
+                std::sort(flowX.begin(), flowX.end());
+                std::sort(flowY.begin(), flowY.end());
+                lkDx = flowX[flowX.size() / 2];
+                lkDy = flowY[flowY.size() / 2];
+                lkSuccess = true;
             }
         }
     }
 
-    // Fine refinement (stride 1) around best coarse peak
-    int refineMinX = std::max(minX, bestX - 2);
-    int refineMaxX = std::min(maxX, bestX + 2);
-    int refineMinY = std::max(minY, bestY - 2);
-    int refineMaxY = std::min(maxY, bestY + 2);
+    // 2. Kinematic Prediction for Search Center (Momentum + LK Flow Fusion)
+    float predDx = lkSuccess ? (0.6f * lkDx + 0.4f * mVelocityX) : mVelocityX;
+    float predDy = lkSuccess ? (0.6f * lkDy + 0.4f * mVelocityY) : mVelocityY;
+
+    float predX = mCurrentBox.x + predDx;
+    float predY = mCurrentBox.y + predDy;
+
+    // 3. Wide Dynamic Search Radius (Handles Fast Movement up to 120+ pixels)
+    int searchRadiusX = std::max(48, std::min(96, tw * 2));
+    int searchRadiusY = std::max(48, std::min(96, th * 2));
+
+    int minX = std::max(0, static_cast<int>(predX - searchRadiusX));
+    int maxX = std::min(frame.width - tw, static_cast<int>(predX + searchRadiusX));
+    int minY = std::max(0, static_cast<int>(predY - searchRadiusY));
+    int maxY = std::min(frame.height - th, static_cast<int>(predY + searchRadiusY));
+
+    if (minX > maxX || minY > maxY) {
+        minX = std::max(0, std::min(frame.width - tw, minX));
+        maxX = std::max(minX, std::min(frame.width - tw, maxX));
+        minY = std::max(0, std::min(frame.height - th, minY));
+        maxY = std::max(minY, std::min(frame.height - th, maxY));
+    }
+
+    // Helper lambda to compute match score at (x, y)
+    auto evalMatchScore = [&](int x, int y) -> float {
+        int count = tw * th;
+        if (mTemplateStdDev < 5.0f) {
+            float sumDiff = 0.0f;
+            for (int ty = 0; ty < th; ++ty) {
+                const uint8_t* fRow = frame.row(y + ty) + x;
+                const uint8_t* tRow = mTemplatePatch.row(ty);
+                for (int tx = 0; tx < tw; ++tx) {
+                    sumDiff += std::abs(static_cast<int>(fRow[tx]) - static_cast<int>(tRow[tx]));
+                }
+            }
+            return 1.0f - (sumDiff / (count * 255.0f));
+        } else {
+            float sumI = 0.0f;
+            float sumISq = 0.0f;
+            float sumCross = 0.0f;
+            for (int ty = 0; ty < th; ++ty) {
+                const uint8_t* fRow = frame.row(y + ty) + x;
+                const uint8_t* tRow = mTemplatePatch.row(ty);
+                for (int tx = 0; tx < tw; ++tx) {
+                    float valI = static_cast<float>(fRow[tx]);
+                    float valT = static_cast<float>(tRow[tx]);
+                    sumI += valI;
+                    sumISq += valI * valI;
+                    sumCross += (valT - mTemplateMean) * valI;
+                }
+            }
+            float meanI = sumI / count;
+            float varI = (sumISq / count) - (meanI * meanI);
+            float stdDevI = std::sqrt(std::max(1.0f, varI));
+            return (sumCross / count) / (mTemplateStdDev * stdDevI);
+        }
+    };
+
+    // Coarse Search (stride 3 for rapid coverage of wide search window)
+    float bestScore = -2.0f;
+    int bestCoarseX = minX;
+    int bestCoarseY = minY;
+
+    for (int y = minY; y <= maxY; y += 3) {
+        for (int x = minX; x <= maxX; x += 3) {
+            float score = evalMatchScore(x, y);
+            if (score > bestScore) {
+                bestScore = score;
+                bestCoarseX = x;
+                bestCoarseY = y;
+            }
+        }
+    }
+
+    // Fine Search (stride 1 in local neighborhood around coarse peak)
+    int refineMinX = std::max(minX, bestCoarseX - 4);
+    int refineMaxX = std::min(maxX, bestCoarseX + 4);
+    int refineMinY = std::max(minY, bestCoarseY - 4);
+    int refineMaxY = std::min(maxY, bestCoarseY + 4);
+
+    int bestX = bestCoarseX;
+    int bestY = bestCoarseY;
 
     for (int y = refineMinY; y <= refineMaxY; ++y) {
         for (int x = refineMinX; x <= refineMaxX; ++x) {
-            float sumI = 0.0f;
-            float sumISq = 0.0f;
-            float sumCross = 0.0f;
-            int count = tw * th;
-
-            float matchScore = -1.0f;
-            if (mTemplateStdDev < 5.0f) {
-                float sumDiff = 0.0f;
-                for (int ty = 0; ty < th; ++ty) {
-                    const uint8_t* fRow = frame.row(y + ty) + x;
-                    const uint8_t* tRow = mTemplatePatch.row(ty);
-                    for (int tx = 0; tx < tw; ++tx) {
-                        sumDiff += std::abs(static_cast<int>(fRow[tx]) - static_cast<int>(tRow[tx]));
-                    }
-                }
-                matchScore = 1.0f - (sumDiff / (count * 255.0f));
-            } else {
-                for (int ty = 0; ty < th; ++ty) {
-                    const uint8_t* fRow = frame.row(y + ty) + x;
-                    const uint8_t* tRow = mTemplatePatch.row(ty);
-                    for (int tx = 0; tx < tw; ++tx) {
-                        float valI = static_cast<float>(fRow[tx]);
-                        float valT = static_cast<float>(tRow[tx]);
-                        sumI += valI;
-                        sumISq += valI * valI;
-                        sumCross += (valT - mTemplateMean) * valI;
-                    }
-                }
-                float meanI = sumI / count;
-                float varI = (sumISq / count) - (meanI * meanI);
-                float stdDevI = std::sqrt(std::max(1.0f, varI));
-                matchScore = (sumCross / count) / (mTemplateStdDev * stdDevI);
-            }
-
-            if (matchScore > bestZNCC) {
-                bestZNCC = matchScore;
+            float score = evalMatchScore(x, y);
+            if (score > bestScore) {
+                bestScore = score;
                 bestX = x;
                 bestY = y;
             }
         }
     }
 
-    // Subpixel refinement using quadratic fitting on local neighborhood
-    float subX = static_cast<float>(bestX);
-    float subY = static_cast<float>(bestY);
+    // 4. Continuous Subpixel Quadratic Fitting (Eliminates integer stair-stepping jitter)
+    float s0 = bestScore;
+    float sL = (bestX > minX) ? evalMatchScore(bestX - 1, bestY) : s0;
+    float sR = (bestX < maxX) ? evalMatchScore(bestX + 1, bestY) : s0;
+    float sT = (bestY > minY) ? evalMatchScore(bestX, bestY - 1) : s0;
+    float sB = (bestY < maxY) ? evalMatchScore(bestX, bestY + 1) : s0;
 
-    outBox.x = subX;
-    outBox.y = subY;
-    outBox.width = static_cast<float>(tw);
-    outBox.height = static_cast<float>(th);
-    outBox.confidence = std::max(0.0f, bestZNCC);
+    float denomX = 2.0f * s0 - sL - sR;
+    float deltaX = (denomX > 1e-4f) ? (sR - sL) / (2.0f * denomX) : 0.0f;
+    deltaX = std::max(-0.5f, std::min(0.5f, deltaX));
 
-    // Compute affine transform matrix mapping previous box to current box
-    float dx = subX - mCurrentBox.x;
-    float dy = subY - mCurrentBox.y;
+    float denomY = 2.0f * s0 - sT - sB;
+    float deltaY = (denomY > 1e-4f) ? (sB - sT) / (2.0f * denomY) : 0.0f;
+    deltaY = std::max(-0.5f, std::min(0.5f, deltaY));
 
+    float subX = static_cast<float>(bestX) + deltaX;
+    float subY = static_cast<float>(bestY) + deltaY;
+
+    // 5. Robust Match Verification & Kinematic Coasting
+    float passThreshold = (mTemplateStdDev < 5.0f) ? 0.60f : 0.28f;
+    bool isMatch = (bestScore >= passThreshold);
+
+    if (isMatch) {
+        mLostFramesCount = 0;
+        float actualDx = subX - mCurrentBox.x;
+        float actualDy = subY - mCurrentBox.y;
+
+        // Update velocity with momentum filter
+        mVelocityX = 0.65f * mVelocityX + 0.35f * actualDx;
+        mVelocityY = 0.65f * mVelocityY + 0.35f * actualDy;
+
+        outBox.x = subX;
+        outBox.y = subY;
+        outBox.width = static_cast<float>(tw);
+        outBox.height = static_cast<float>(th);
+        outBox.confidence = std::max(0.0f, bestScore);
+
+        // Adaptive template update on high confidence
+        if (bestScore > 0.72f) {
+            float alpha = 0.04f;
+            for (int ty = 0; ty < th; ++ty) {
+                const uint8_t* fRow = frame.row(bestY + ty) + bestX;
+                uint8_t* tRow = mTemplatePatch.row(ty);
+                for (int tx = 0; tx < tw; ++tx) {
+                    tRow[tx] = static_cast<uint8_t>((1.0f - alpha) * tRow[tx] + alpha * fRow[tx]);
+                }
+            }
+        }
+    } else {
+        // High-speed motion blur or occlusion: Coast along momentum vector!
+        mLostFramesCount++;
+        float coastX = mCurrentBox.x + mVelocityX;
+        float coastY = mCurrentBox.y + mVelocityY;
+        coastX = std::max(0.0f, std::min(static_cast<float>(frame.width - tw), coastX));
+        coastY = std::max(0.0f, std::min(static_cast<float>(frame.height - th), coastY));
+
+        mVelocityX *= 0.92f;
+        mVelocityY *= 0.92f;
+
+        outBox.x = coastX;
+        outBox.y = coastY;
+        outBox.width = static_cast<float>(tw);
+        outBox.height = static_cast<float>(th);
+        outBox.confidence = std::max(0.0f, bestScore);
+    }
+
+    // Affine transform matrix mapping previous box to current box
+    float dx = outBox.x - mCurrentBox.x;
+    float dy = outBox.y - mCurrentBox.y;
     outMatrix[0] = 1.0f; outMatrix[1] = 0.0f; outMatrix[2] = dx;
     outMatrix[3] = 0.0f; outMatrix[4] = 1.0f; outMatrix[5] = dy;
     outMatrix[6] = 0.0f; outMatrix[7] = 0.0f; outMatrix[8] = 1.0f;
 
-    // Adaptive template update on high confidence to handle gradual lighting changes
-    if (bestZNCC > 0.75f) {
-        float alpha = 0.05f;
-        for (int ty = 0; ty < th; ++ty) {
-            const uint8_t* fRow = frame.row(bestY + ty) + bestX;
-            uint8_t* tRow = mTemplatePatch.row(ty);
-            for (int tx = 0; tx < tw; ++tx) {
-                tRow[tx] = static_cast<uint8_t>(
-                    (1.0f - alpha) * tRow[tx] + alpha * fRow[tx]
-                );
-            }
-        }
-    }
-
     mCurrentBox = outBox;
-    return (bestZNCC > 0.35f);
+    mPrevFrameGray = frame;
+    mHasPrevFrame = true;
+
+    return isMatch || (mLostFramesCount <= 12);
 }
 
 // ----------------------------------------------------------------------------

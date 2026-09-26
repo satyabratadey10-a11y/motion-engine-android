@@ -145,26 +145,28 @@ static inline void sampleBilinearRGB(
     float v,
     uint8_t outRGB[3]
 ) {
-    if (u < 0.0f || u >= w - 1.0f || v < 0.0f || v >= h - 1.0f) {
-        // Clamp to nearest border pixel with subtle edge fade
+    if (u < 0.0f || u > w - 1.0f || v < 0.0f || v > h - 1.0f) {
         int cu = std::max(0, std::min(w - 1, static_cast<int>(std::round(u))));
         int cv = std::max(0, std::min(h - 1, static_cast<int>(std::round(v))));
         int idx = (cv * w + cu) * 3;
-        outRGB[0] = src[idx] >> 1;     // Darken out-of-bounds border
-        outRGB[1] = src[idx + 1] >> 1;
-        outRGB[2] = src[idx + 2] >> 1;
+        outRGB[0] = src[idx];
+        outRGB[1] = src[idx + 1];
+        outRGB[2] = src[idx + 2];
         return;
     }
 
     int x0 = static_cast<int>(u);
     int y0 = static_cast<int>(v);
+    int x1 = std::min(x0 + 1, w - 1);
+    int y1 = std::min(y0 + 1, h - 1);
+
     float ax = u - static_cast<float>(x0);
     float ay = v - static_cast<float>(y0);
 
     int idx00 = (y0 * w + x0) * 3;
-    int idx10 = idx00 + 3;
-    int idx01 = ((y0 + 1) * w + x0) * 3;
-    int idx11 = idx01 + 3;
+    int idx10 = (y0 * w + x1) * 3;
+    int idx01 = (y1 * w + x0) * 3;
+    int idx11 = (y1 * w + x1) * 3;
 
     for (int c = 0; c < 3; ++c) {
         float p00 = src[idx00 + c];
@@ -177,7 +179,7 @@ static inline void sampleBilinearRGB(
                     (1.0f - ax) * ay * p01 +
                     ax * ay * p11;
 
-        outRGB[c] = static_cast<uint8_t>(std::max(0.0f, std::min(255.0f, val)));
+        outRGB[c] = static_cast<uint8_t>(std::max(0.0f, std::min(255.0f, val + 0.5f)));
     }
 }
 
