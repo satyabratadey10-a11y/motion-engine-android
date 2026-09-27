@@ -79,9 +79,16 @@ void MotionEngineCore::convertToGray(
     FrameFormat format,
     GrayImage& dst
 ) {
+    if (!src || width <= 0 || height <= 0 || width > 8192 || height > 8192) {
+        dst.width = 0;
+        dst.height = 0;
+        dst.data.clear();
+        return;
+    }
+
     dst.width = width;
     dst.height = height;
-    dst.data.resize(width * height);
+    dst.data.resize(static_cast<size_t>(width) * height);
 
     if (format == FrameFormat::GRAYSCALE || format == FrameFormat::NV21) {
         // NV21 Y-plane and raw Grayscale start with width * height 8-bit luminance bytes
@@ -113,9 +120,11 @@ void MotionEngineCore::convertToGray(
 }
 
 inline float MotionEngineCore::getSubpixel(const GrayImage& img, float x, float y) {
-    if (x < 0.0f || x >= img.width - 1 || y < 0.0f || y >= img.height - 1) {
-        int cx = std::max(0, std::min(img.width - 1, static_cast<int>(std::round(x))));
-        int cy = std::max(0, std::min(img.height - 1, static_cast<int>(std::round(y))));
+    if (img.width <= 0 || img.height <= 0 || img.data.empty()) return 0.0f;
+    if (std::isnan(x) || std::isnan(y) || std::isinf(x) || std::isinf(y) ||
+        x < 0.0f || x >= img.width - 1.0f || y < 0.0f || y >= img.height - 1.0f) {
+        int cx = std::isnan(x) ? 0 : std::max(0, std::min(img.width - 1, static_cast<int>(std::round(x))));
+        int cy = std::isnan(y) ? 0 : std::max(0, std::min(img.height - 1, static_cast<int>(std::round(y))));
         return static_cast<float>(img.at(cx, cy));
     }
 
@@ -998,6 +1007,13 @@ Java_com_tracker_motionengine_MotionEngine_nativeTrackPoints(
         return 0;
     }
 
+    jsize inLen = env->GetArrayLength(inPoints);
+    jsize outLen = env->GetArrayLength(outPoints);
+    jsize statLen = env->GetArrayLength(outStatus);
+    if (inLen < 2 || outLen < inLen || statLen < inLen / 2) {
+        return 0;
+    }
+
     const uint8_t* prevPtr = static_cast<const uint8_t*>(env->GetDirectBufferAddress(prevBuf));
     const uint8_t* currPtr = static_cast<const uint8_t*>(env->GetDirectBufferAddress(currBuf));
     if (!prevPtr || !currPtr) {
@@ -1086,6 +1102,10 @@ Java_com_tracker_motionengine_MotionEngine_nativeTrackBoundingBox(
         return JNI_FALSE;
     }
 
+    if (env->GetArrayLength(outBox) < 5 || env->GetArrayLength(outMatrix) < 9) {
+        return JNI_FALSE;
+    }
+
     const uint8_t* ptr = static_cast<const uint8_t*>(env->GetDirectBufferAddress(frameBuf));
     if (!ptr) {
         return JNI_FALSE;
@@ -1126,6 +1146,10 @@ Java_com_tracker_motionengine_MotionEngine_nativeStabilizeFrame(
 ) {
     MotionEngineCore* engine = getEngineHandle(handle);
     if (!engine || !frameBuf || !outData) {
+        return JNI_FALSE;
+    }
+
+    if (env->GetArrayLength(outData) < 15) {
         return JNI_FALSE;
     }
 
@@ -1185,6 +1209,14 @@ Java_com_tracker_motionengine_MotionEngine_nativeTrackPolygonMask(
 ) {
     MotionEngineCore* engine = getEngineHandle(handle);
     if (!engine || !prevBuf || !currBuf || !inVertices || !outVertices || !outStatus || !outMatrix) {
+        return JNI_FALSE;
+    }
+
+    jsize inLen = env->GetArrayLength(inVertices);
+    jsize outLen = env->GetArrayLength(outVertices);
+    jsize statLen = env->GetArrayLength(outStatus);
+    jsize matLen = env->GetArrayLength(outMatrix);
+    if (inLen < 2 || outLen < inLen || statLen < inLen / 2 || matLen < 9) {
         return JNI_FALSE;
     }
 

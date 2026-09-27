@@ -145,9 +145,10 @@ static inline void sampleBilinearRGB(
     float v,
     uint8_t outRGB[3]
 ) {
-    if (u < 0.0f || u > w - 1.0f || v < 0.0f || v > h - 1.0f) {
-        int cu = std::max(0, std::min(w - 1, static_cast<int>(std::round(u))));
-        int cv = std::max(0, std::min(h - 1, static_cast<int>(std::round(v))));
+    if (std::isnan(u) || std::isnan(v) || std::isinf(u) || std::isinf(v) ||
+        u < 0.0f || u > w - 1.0f || v < 0.0f || v > h - 1.0f) {
+        int cu = (std::isnan(u) || std::isinf(u)) ? 0 : std::max(0, std::min(w - 1, static_cast<int>(std::round(u))));
+        int cv = (std::isnan(v) || std::isinf(v)) ? 0 : std::max(0, std::min(h - 1, static_cast<int>(std::round(v))));
         int idx = (cv * w + cu) * 3;
         outRGB[0] = src[idx];
         outRGB[1] = src[idx + 1];
