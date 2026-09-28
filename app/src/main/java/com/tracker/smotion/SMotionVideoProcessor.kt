@@ -108,8 +108,8 @@ class SMotionVideoProcessor(private val context: Context) {
         val mime1 = videoFormat1.getString(MediaFormat.KEY_MIME) ?: "video/avc"
 
         val eglCore1 = EglCore(null, 0)
-        // Dummy 1x1 offscreen Pbuffer
-        val pbuffer1 = eglCore1.createWindowSurface(Surface(SurfaceTexture(0).apply { setDefaultBufferSize(trackW, trackH) }))
+        // Offscreen WindowSurface for Pass 1 frame reading
+        val pbuffer1 = WindowSurface(eglCore1, Surface(SurfaceTexture(0).apply { setDefaultBufferSize(trackW, trackH) }), releaseSurface = true)
         pbuffer1.makeCurrent()
 
         val renderer1 = TextureRenderer()

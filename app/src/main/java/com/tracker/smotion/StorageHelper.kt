@@ -16,7 +16,7 @@ import java.util.Locale
 
 /**
  * Storage and file utilities to ensure output videos are saved directly to
- * /Movies/SMotion/*.mp4 and properly registered with the Android MediaStore.
+ * /Movies/SMotion/ and properly registered with the Android MediaStore.
  */
 object StorageHelper {
 
