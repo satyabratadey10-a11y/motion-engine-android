@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Outer rounded glow background -->
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M8,4h32c2.2,0 4,1.8 4,4v32c0,2.2 -1.8,4 -4,4H8c-2.2,0 -4,-1.8 -4,-4V8c0,-2.2 1.8,-4 4,-4z" />
+    <!-- Reticle corner brackets -->
+    <path
+        android:strokeColor="#00F2FE"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M12,18V12h6 M30,12h6v6 M12,30v6h6 M30,36h6v-6" />
+    <!-- Center target point -->
+    <path
+        android:fillColor="#00F2FE"
+        android:pathData="M24,24m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0" />
+    <!-- Crosshairs -->
+    <path
+        android:strokeColor="#4FACFE"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round"
+        android:pathData="M24,15v4 M24,29v4 M15,24h4 M29,24h4" />
+</vector>

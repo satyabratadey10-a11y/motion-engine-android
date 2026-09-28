@@ -1,4 +1,4 @@
-name: Build Universal AAR
+name: Build SMotion APK & JitPack Library
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build Native Motion Engine AAR
+    name: Build Native AAR, Verify JitPack, and Compile APK
     runs-on: ubuntu-latest
 
     steps:
@@ -40,12 +40,38 @@ jobs:
       - name: Make Gradlew Executable
         run: chmod +x gradlew
 
-      - name: Build AAR with Gradle
+      - name: Build Native Motion Engine AAR
         run: ./gradlew :motion-engine:assembleRelease --no-daemon --stacktrace
+
+      - name: Verify JitPack Publishing (publishToMavenLocal)
+        run: ./gradlew :motion-engine:publishToMavenLocal --no-daemon --stacktrace
+
+      - name: Sync AAR to App Libs
+        run: |
+          mkdir -p app/libs
+          cp motion-engine/build/outputs/aar/*.aar app/libs/motion-engine-release.aar
+          ls -lh app/libs/
+
+      - name: Build Android APK (Debug & Release)
+        run: ./gradlew :app:assembleDebug :app:assembleRelease --no-daemon --stacktrace
 
       - name: Upload Release AAR Artifact
         uses: actions/upload-artifact@v4
         with:
           name: motion-engine-release-aar
           path: motion-engine/build/outputs/aar/*.aar
+          if-no-files-found: error
+
+      - name: Upload SMotion Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smotion-app-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload SMotion Release APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: smotion-app-release-apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error

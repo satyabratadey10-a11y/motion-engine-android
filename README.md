@@ -170,16 +170,45 @@ val warpedMask = engine.trackPolygonMask(
 engine.close()
 ```
 
+## JitPack Distribution
+
+The `motion-engine` SDK is published to JitPack:
+
+```kotlin
+// settings.gradle.kts or root build.gradle.kts
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven("https://jitpack.io")
+    }
+}
+
+// In your app/build.gradle.kts
+dependencies {
+    implementation("com.github.satyabratadey10-a11y:motion-engine-android:1.0.0")
+}
+```
+
 ---
 
-## Building the Universal `.aar`
+## SMotion Android Application (`:app`)
 
-To build the release artifact locally:
+The repository includes a production-ready Android application demonstrating the `motion-engine` library:
+
+- **Video Import**: Pick any video from device storage with automatic metadata inspection.
+- **Interactive Preview**: High-performance video playback with real-time gesture tracking.
+- **Touch-to-Track Selection**: Select target objects by dragging the cyan bounding box, resizing via corner handles, or using quick presets.
+- **Hardware MediaCodec Export**: Dual-pass optical flow tracking + zero-phase Gaussian trajectory smoothing + OpenGL ES 2.0 centering + hardware H.264 encoding with audio preservation.
+- **Storage Destination**: Exports directly to internal storage `/Movies/SMotion/SMotion_*.mp4` with automatic Android MediaStore indexing and instant Play/Share intents.
+
+### Building the APK
 ```bash
-./gradlew :motion-engine:assembleRelease
+./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease
 ```
 
-The output `.aar` package will be generated at:
-```
-motion-engine/build/outputs/aar/motion-engine-release.aar
-```
+Generated APKs:
+- `app/build/outputs/apk/debug/app-debug.apk`
+- `app/build/outputs/apk/release/app-release-unsigned.apk`
+
