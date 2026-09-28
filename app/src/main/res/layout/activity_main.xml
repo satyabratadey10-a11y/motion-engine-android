@@ -150,9 +150,14 @@
 
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/btnPlayPause"
-                            style="@style/Widget.Material3.Button.IconButton.FilledTonal"
-                            android:layout_width="40dp"
-                            android:layout_height="40dp"
+                            style="@style/Widget.Material3.Button.TonalButton"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:insetLeft="0dp"
+                            android:insetTop="0dp"
+                            android:insetRight="0dp"
+                            android:insetBottom="0dp"
+                            android:padding="0dp"
                             android:text="▶"
                             android:textColor="@color/primary" />
 
